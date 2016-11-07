@@ -1487,6 +1487,10 @@ func buildNetworkDevice(f *find.Finder, label, adapterType string, macAddress st
 						VirtualDevice: types.VirtualDevice{
 							Key:     -1,
 							Backing: backing,
+							Connectable: &types.VirtualDeviceConnectInfo{
+								StartConnected: true,
+								Connected:      true,
+							},
 						},
 						AddressType: address_type,
 						MacAddress:  macAddress,
@@ -1502,6 +1506,10 @@ func buildNetworkDevice(f *find.Finder, label, adapterType string, macAddress st
 					VirtualDevice: types.VirtualDevice{
 						Key:     -1,
 						Backing: backing,
+						Connectable: &types.VirtualDeviceConnectInfo{
+							StartConnected: true,
+							Connected:      true,
+						},
 					},
 					AddressType: address_type,
 					MacAddress:  macAddress,
@@ -1825,7 +1833,7 @@ func (vm *virtualMachine) setupVirtualMachine(c *govmomi.Client) error {
 		if vm.template == "" {
 			networkDeviceType = "e1000"
 		} else {
-			networkDeviceType = "vmxnet3"
+			networkDeviceType = "e1000"
 		}
 		nd, err := buildNetworkDevice(finder, network.label, networkDeviceType, network.macAddress)
 		if err != nil {
@@ -1833,57 +1841,59 @@ func (vm *virtualMachine) setupVirtualMachine(c *govmomi.Client) error {
 		}
 		log.Printf("[DEBUG] network device: %+v", nd.Device)
 		networkDevices = append(networkDevices, nd)
+		/*
+			if vm.template != "" {
+				var ipSetting types.CustomizationIPSettings
+				if network.ipv4Address == "" {
+					ipSetting.Ip = &types.CustomizationDhcpIpGenerator{}
+				} else {
+					if network.ipv4PrefixLength == 0 {
+						return fmt.Errorf("Error: ipv4_prefix_length argument is empty.")
+					}
+					m := net.CIDRMask(network.ipv4PrefixLength, 32)
+					sm := net.IPv4(m[0], m[1], m[2], m[3])
+					subnetMask := sm.String()
+					log.Printf("[DEBUG] ipv4 gateway: %v\n", network.ipv4Gateway)
+					log.Printf("[DEBUG] ipv4 address: %v\n", network.ipv4Address)
+					log.Printf("[DEBUG] ipv4 prefix length: %v\n", network.ipv4PrefixLength)
+					log.Printf("[DEBUG] ipv4 subnet mask: %v\n", subnetMask)
+					ipSetting.Gateway = []string{
+						network.ipv4Gateway,
+					}
+					ipSetting.Ip = &types.CustomizationFixedIp{
+						IpAddress: network.ipv4Address,
+					}
+					ipSetting.SubnetMask = subnetMask
+				}
 
-		if vm.template != "" {
-			var ipSetting types.CustomizationIPSettings
-			if network.ipv4Address == "" {
-				ipSetting.Ip = &types.CustomizationDhcpIpGenerator{}
-			} else {
-				if network.ipv4PrefixLength == 0 {
-					return fmt.Errorf("Error: ipv4_prefix_length argument is empty.")
+				ipv6Spec := &types.CustomizationIPSettingsIpV6AddressSpec{}
+				if network.ipv6Address == "" {
+					ipv6Spec.Ip = []types.BaseCustomizationIpV6Generator{
+						&types.CustomizationDhcpIpV6Generator{},
+					}
+				} else {
+					log.Printf("[DEBUG] ipv6 gateway: %v\n", network.ipv6Gateway)
+					log.Printf("[DEBUG] ipv6 address: %v\n", network.ipv6Address)
+					log.Printf("[DEBUG] ipv6 prefix length: %v\n", network.ipv6PrefixLength)
+
+					ipv6Spec.Ip = []types.BaseCustomizationIpV6Generator{
+						&types.CustomizationFixedIpV6{
+							IpAddress:  network.ipv6Address,
+							SubnetMask: int32(network.ipv6PrefixLength),
+						},
+					}
+					ipv6Spec.Gateway = []string{network.ipv6Gateway}
 				}
-				m := net.CIDRMask(network.ipv4PrefixLength, 32)
-				sm := net.IPv4(m[0], m[1], m[2], m[3])
-				subnetMask := sm.String()
-				log.Printf("[DEBUG] ipv4 gateway: %v\n", network.ipv4Gateway)
-				log.Printf("[DEBUG] ipv4 address: %v\n", network.ipv4Address)
-				log.Printf("[DEBUG] ipv4 prefix length: %v\n", network.ipv4PrefixLength)
-				log.Printf("[DEBUG] ipv4 subnet mask: %v\n", subnetMask)
-				ipSetting.Gateway = []string{
-					network.ipv4Gateway,
+				ipSetting.IpV6Spec = ipv6Spec
+
+				// network config
+				config := types.CustomizationAdapterMapping{
+					Adapter: ipSetting,
 				}
-				ipSetting.Ip = &types.CustomizationFixedIp{
-					IpAddress: network.ipv4Address,
-				}
-				ipSetting.SubnetMask = subnetMask
+				networkConfigs = append(networkConfigs, config)
 			}
-
-			ipv6Spec := &types.CustomizationIPSettingsIpV6AddressSpec{}
-			if network.ipv6Address == "" {
-				ipv6Spec.Ip = []types.BaseCustomizationIpV6Generator{
-					&types.CustomizationDhcpIpV6Generator{},
-				}
-			} else {
-				log.Printf("[DEBUG] ipv6 gateway: %v\n", network.ipv6Gateway)
-				log.Printf("[DEBUG] ipv6 address: %v\n", network.ipv6Address)
-				log.Printf("[DEBUG] ipv6 prefix length: %v\n", network.ipv6PrefixLength)
-
-				ipv6Spec.Ip = []types.BaseCustomizationIpV6Generator{
-					&types.CustomizationFixedIpV6{
-						IpAddress:  network.ipv6Address,
-						SubnetMask: int32(network.ipv6PrefixLength),
-					},
-				}
-				ipv6Spec.Gateway = []string{network.ipv6Gateway}
-			}
-			ipSetting.IpV6Spec = ipv6Spec
-
-			// network config
-			config := types.CustomizationAdapterMapping{
-				Adapter: ipSetting,
-			}
-			networkConfigs = append(networkConfigs, config)
-		}
+		*/
+		configSpec.DeviceChange = append(configSpec.DeviceChange, nd)
 	}
 	log.Printf("[DEBUG] network devices: %#v", networkDevices)
 	log.Printf("[DEBUG] network configs: %#v", networkConfigs)
@@ -1919,6 +1929,23 @@ func (vm *virtualMachine) setupVirtualMachine(c *govmomi.Client) error {
 
 	} else {
 
+		devices, err := template.Device(context.TODO())
+		if err != nil {
+			log.Printf("[ERROR] %s", err)
+			return err
+		}
+		var card *types.VirtualEthernetCard
+		for _, device := range devices {
+			if c, ok := device.(types.BaseVirtualEthernetCard); ok {
+				card = c.GetVirtualEthernetCard()
+				if card != nil {
+					configSpec.DeviceChange = append(configSpec.DeviceChange, &types.VirtualDeviceConfigSpec{
+						Operation: types.VirtualDeviceConfigSpecOperationRemove,
+						Device:    card,
+					})
+				}
+			}
+		}
 		relocateSpec, err := buildVMRelocateSpec(resourcePool, datastore, template, vm.linkedClone, vm.hardDisks[0].initType)
 		if err != nil {
 			return err
@@ -1958,30 +1985,31 @@ func (vm *virtualMachine) setupVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] new vm: %v", newVM)
 
-	devices, err := newVM.Device(context.TODO())
-	if err != nil {
-		log.Printf("[DEBUG] Template devices can't be found")
-		return err
-	}
-
-	for _, dvc := range devices {
-		// Issue 3559/3560: Delete all ethernet devices to add the correct ones later
-		if devices.Type(dvc) == "ethernet" {
-			err := newVM.RemoveDevice(context.TODO(), false, dvc)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	// Add Network devices
-	for _, dvc := range networkDevices {
-		err := newVM.AddDevice(
-			context.TODO(), dvc.GetVirtualDeviceConfigSpec().Device)
+	/*
+		devices, err := newVM.Device(context.TODO())
 		if err != nil {
+			log.Printf("[DEBUG] Template devices can't be found")
 			return err
 		}
-	}
 
+			for _, dvc := range devices {
+				// Issue 3559/3560: Delete all ethernet devices to add the correct ones later
+				if devices.Type(dvc) == "ethernet" {
+					err := newVM.RemoveDevice(context.TODO(), false, dvc)
+					if err != nil {
+						return err
+					}
+				}
+			}
+			// Add Network devices
+			for _, dvc := range networkDevices {
+				err := newVM.AddDevice(
+					context.TODO(), dvc.GetVirtualDeviceConfigSpec().Device)
+				if err != nil {
+					return err
+				}
+			}
+	*/
 	// Create the cdroms if needed.
 	if err := createCdroms(c, newVM, dc, vm.cdroms); err != nil {
 		return err
@@ -2090,16 +2118,15 @@ func (vm *virtualMachine) setupVirtualMachine(c *govmomi.Client) error {
 				DnsSuffixList: vm.dnsSuffixes,
 				DnsServerList: vm.dnsServers,
 			},
-			NicSettingMap: networkConfigs,
 		}
 		log.Printf("[DEBUG] custom spec: %v", customSpec)
 
 		log.Printf("[DEBUG] VM customization starting")
-		taskb, err := newVM.Customize(context.TODO(), customSpec)
+		//taskb, err := newVM.Customize(context.TODO(), customSpec)
 		if err != nil {
 			return err
 		}
-		_, err = taskb.WaitForResult(context.TODO(), nil)
+		//_, err = taskb.WaitForResult(context.TODO(), nil)
 		if err != nil {
 			return err
 		}
